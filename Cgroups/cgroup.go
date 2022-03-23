@@ -1,4 +1,4 @@
-package main
+package Cgroups
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 // 挂载了memory subsystem的hierarchy的根目录位置
 const cgroupMemoryHierarchy = "/sys/fs/cgroup/memory"
 
-func main() {
+func cgroup() {
 	//fmt.Println(os.Args)
 	if os.Args[0] == "/proc/self/exe" {
 		// 容器进程
