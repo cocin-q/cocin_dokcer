@@ -1,4 +1,4 @@
-package Namespace
+package practice
 
 import (
 	"log"
@@ -13,7 +13,7 @@ import (
 
 func namespace() {
 	cmd := exec.Command("sh") // 指定被fork出来的新进程内的初始命令，默认使用sh来执行
-	// 设置系统调用参数 创建UTS Namespace
+	// 设置系统调用参数 创建UTS practice
 	cmd.SysProcAttr = &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWUTS |
 		syscall.CLONE_NEWIPC | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS |
 		syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,

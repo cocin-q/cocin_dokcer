@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cocin_dokcer/Cgroups/subsystems"
 	"cocin_dokcer/container"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -29,9 +30,17 @@ var runCommand = cli.Command{
 		if len(context.Args()) < 1 {
 			return fmt.Errorf("Missing container command")
 		}
-		cmd := context.Args().Get(0)
+		var cmdArray []string
+		for _, arg := range context.Args() {
+			cmdArray = append(cmdArray, arg)
+		}
+		resConf := &subsystems.ResourceConfig{
+			MemoryLimit: context.String("m"), // 没找到返回""
+			CpuShare:    context.String("cpuset"),
+			CpuSet:      context.String("cpushare"),
+		}
 		tty := context.Bool("ti")
-		Run(tty, cmd)
+		Run(tty, cmdArray, resConf)
 		return nil
 	},
 }
@@ -47,7 +56,7 @@ var initCommand = cli.Command{
 		log.Infof("init come on")
 		cmd := context.Args().Get(0)
 		log.Infof("command %s", cmd)
-		err := container.RunContainerInitProcess(cmd, nil)
+		err := container.RunContainerInitProcess()
 		return err
 	},
 }
