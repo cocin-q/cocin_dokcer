@@ -10,8 +10,8 @@ import (
 )
 
 // Run 运行命令
-func Run(tty bool, comArray []string, res *subsystems.ResourceConfig) {
-	parent, writePipe := container.NewParentProcess(tty)
+func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume string) {
+	parent, writePipe := container.NewParentProcess(tty, volume)
 	if parent == nil {
 		log.Errorf("New parent process error")
 		return
@@ -28,6 +28,11 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig) {
 	// 设置完限制后 初始化容器
 	sendInitCommand(comArray, writePipe)
 	parent.Wait()
+
+	mntURL := "/root/mnt/"
+	rootURL := "/root/"
+	container.DeleteWorkSpace(rootURL, mntURL, volume)
+
 	os.Exit(-1)
 }
 

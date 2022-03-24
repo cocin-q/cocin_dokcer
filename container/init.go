@@ -14,7 +14,7 @@ import (
 /*
  这里是父进程，就是当前进程执行的内容
 */ // NewParentProcess
-func NewParentProcess(tty bool) (*exec.Cmd, *os.File) {
+func NewParentProcess(tty bool, volume string) (*exec.Cmd, *os.File) {
 	readPipe, writePipe, err := NewPipe()
 	if err != nil {
 		log.Errorf("New pipe error %v", err)
@@ -31,7 +31,10 @@ func NewParentProcess(tty bool) (*exec.Cmd, *os.File) {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
-	cmd.Dir = "/root/busybox"
+	mntURL := "/root/mnt/"
+	rootURL := "/root/"
+	NewWorkSpace(rootURL, mntURL, volume)
+	cmd.Dir = mntURL
 	// 在这传入管道文件读取端的句柄，传给子进程
 	// cmd.ExtraFiles 外带这个文件句柄去创建子进程
 	cmd.ExtraFiles = []*os.File{readPipe}
@@ -51,9 +54,7 @@ func RunContainerInitProcess() error {
 	if cmdArray == nil || len(cmdArray) == 0 {
 		return fmt.Errorf("Run container get user command error, cmdArray is nil")
 	}
-
 	setUpMount()
-
 	// 调用exec.LookPath 可以在系统的PATH里面寻找命令的绝对路径 上一版中得写/bin/sh 现在只需要sh即可
 	path, err := exec.LookPath(cmdArray[0])
 	if err != nil {

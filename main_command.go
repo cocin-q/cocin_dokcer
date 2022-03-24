@@ -18,6 +18,10 @@ var runCommand = cli.Command{
 			Usage: "enable try",
 		},
 		cli.StringFlag{
+			Name:  "v",
+			Usage: "volume",
+		},
+		cli.StringFlag{
 			Name:  "mem",
 			Usage: "memory limit",
 		},
@@ -39,18 +43,20 @@ var runCommand = cli.Command{
 		if len(context.Args()) < 1 {
 			return fmt.Errorf("Missing container command")
 		}
+		var cmdArray []string
+		for _, arg := range context.Args() {
+			cmdArray = append(cmdArray, arg)
+		}
 		tty := context.Bool("ti")
+		// 把volume参数传给Run函数
+		volume := context.String("v")
 		resConf := &subsystems.ResourceConfig{
 			MemoryLimit: context.String("mem"), // 没找到返回""
 			CpuShare:    context.String("cpuset"),
 			CpuSet:      context.String("cpushare"),
 		}
 		//log.Infof("test: %v", resConf.MemoryLimit)
-		var cmdArray []string
-		for _, arg := range context.Args() {
-			cmdArray = append(cmdArray, arg)
-		}
-		Run(tty, cmdArray, resConf)
+		Run(tty, cmdArray, resConf, volume)
 		return nil
 	},
 }
