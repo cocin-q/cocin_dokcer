@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 )
@@ -30,6 +31,7 @@ func NewParentProcess(tty bool) (*exec.Cmd, *os.File) {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	}
+	cmd.Dir = "/root/busybox"
 	// 在这传入管道文件读取端的句柄，传给子进程
 	// cmd.ExtraFiles 外带这个文件句柄去创建子进程
 	cmd.ExtraFiles = []*os.File{readPipe}
@@ -49,14 +51,9 @@ func RunContainerInitProcess() error {
 	if cmdArray == nil || len(cmdArray) == 0 {
 		return fmt.Errorf("Run container get user command error, cmdArray is nil")
 	}
-	// systemd 加入linux之后, mount namespace 就变成 shared by default, 所以你必须显示
-	// 声明你要这个新的mount namespace独立。
-	err := syscall.Mount("", "/", "", syscall.MS_PRIVATE|syscall.MS_REC, "")
-	if err != nil {
-		return err
-	}
-	defaultMountFlags := syscall.MS_NOEXEC | syscall.MS_NOSUID | syscall.MS_NODEV
-	syscall.Mount("proc", "/proc", "proc", uintptr(defaultMountFlags), "")
+
+	setUpMount()
+
 	// 调用exec.LookPath 可以在系统的PATH里面寻找命令的绝对路径 上一版中得写/bin/sh 现在只需要sh即可
 	path, err := exec.LookPath(cmdArray[0])
 	if err != nil {
@@ -93,4 +90,78 @@ func readUserCommand() []string {
 	}
 	msgStr := string(msg)
 	return strings.Split(msgStr, " ")
+}
+
+/*
+ pivot_root是一个系统调用，主要是去改变当前的root文件系统。piovt_root可以将当前进程的root文件系统移动到put_old文件夹中，
+ 然后使new_root成为新的root文件系统。pivot_root是把整个系统切换到一个新的root目录，而移除对之前root文件系统的依赖，这样就能umount原先的root文件系统
+*/
+func pivotRoot(root string) error {
+	/*
+		为了使当前root的老root和新root不在同一个文件系统下，我们把root重新mount了一次，
+		bind mount是把相同的内容换了一个挂载点的挂载方法。
+		我们可以通过mount --bind命令来将两个目录连接起来，
+		mount --bind命令是将前一个目录挂载到后一个目录上，所有对后一个目录的访问其实都是对前一个目录的访问。
+		为什么要这样做？因为new_root必须是mount point。
+	*/
+	if err := syscall.Mount(root, root, "bind", syscall.MS_BIND|syscall.MS_REC, ""); err != nil {
+		return fmt.Errorf("Mount rootfs to itself error: %v", err)
+	}
+	// 创建 rootfs/.pivot_root 存储old_root
+	// put_old必须是new_root，或者new_root的子目录，在这创建一个子目录
+	pivotDir := filepath.Join(root, ".pivot_root")
+	if err := os.Mkdir(pivotDir, 0777); err != nil {
+		return err
+	}
+	//将父root设为private
+	// systemd 加入linux之后, mount namespace 就变成 shared by default, 所以你必须显示
+	// 声明你要这个新的mount namespace独立。
+	err := syscall.Mount("", "/", "", syscall.MS_PRIVATE|syscall.MS_REC, "")
+	if err != nil {
+		return err
+	}
+	// pivot_root 到新的rootfs，老的old_root现在挂载在rootfs/.pivot_root上
+	// pivot_root改变当前进程所在mount namespace内的所有进程的root mount移到put_old，然后将new_root作为新的root mount；
+	// 挂载点目前依然可以在mount命令中看到
+	if err := syscall.PivotRoot(root, pivotDir); err != nil {
+		return fmt.Errorf("pivot_root %v", err)
+	}
+	// 修改当前的工作目录到根目录
+	if err := syscall.Chdir("/"); err != nil {
+		return fmt.Errorf("chdir / %v", err)
+	}
+
+	pivotDir = filepath.Join("/", ".pivot_root")
+	// umount rootfs/.pivot_root 把原先那些根目录取消挂载了，实现隔离
+	// 如果函数执行带有此参数，不会立即执行umount操作，而会等挂载点退出忙碌状态时才会去卸载它。
+	// 不过此函数执行会阻止对该挂载点执行新的访问。之前就在访问此挂载点操作也不会强制其退出，而是会等待其自然退出。
+	if err := syscall.Unmount(pivotDir, syscall.MNT_DETACH); err != nil {
+		return fmt.Errorf("unmount pivot_root dor %v", err)
+	}
+	// 删除临时文件夹
+	return os.Remove(pivotDir)
+}
+
+/*
+ init挂载点
+*/
+func setUpMount() {
+	// 获取当前路径
+	pwd, err := os.Getwd()
+	if err != nil {
+		log.Errorf("Get current location error %v", err)
+		return
+	}
+	log.Infof("Current location is %s", pwd)
+	pivotRoot(pwd)
+
+	// mount proc
+	// 因为上面pivotRoot已经把mount Namespace设置成私有不共享的了，这里不需要再设置
+	defaultMountFlags := syscall.MS_NOEXEC | syscall.MS_NOSUID | syscall.MS_NODEV
+	syscall.Mount("proc", "/proc", "proc", uintptr(defaultMountFlags), "")
+
+	// 挂载虚存
+	// tmpfs是Linux/Unix系统上的一种基于内存的文件系统。tmpfs可以使用RAM或swap分区来存储文件。由此可见，temfs主要存储暂存的文件。
+	// 临时性、快速读写能力、动态收缩
+	syscall.Mount("tmpfs", "/dev", "tmpfs", syscall.MS_NOSUID|syscall.MS_STRICTATIME, "mode=755")
 }
