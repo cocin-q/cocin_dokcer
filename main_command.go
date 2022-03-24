@@ -61,6 +61,7 @@ var runCommand = cli.Command{
 	},
 }
 
+// init命令
 var initCommand = cli.Command{
 	Name:  "init",
 	Usage: "Init container process run user's process in container. Do not call it outside",
@@ -72,5 +73,19 @@ var initCommand = cli.Command{
 		log.Infof("init come on")
 		err := container.RunContainerInitProcess()
 		return err
+	},
+}
+
+// commit命令
+var commitCommand = cli.Command{
+	Name:  "commit",
+	Usage: "commit a container into image",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing image name")
+		}
+		imageName := context.Args().Get(0)
+		commitContainer(imageName)
+		return nil
 	},
 }
