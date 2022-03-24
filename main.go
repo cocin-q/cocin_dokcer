@@ -18,6 +18,8 @@ func main() {
 		initCommand,
 		runCommand,
 		commitCommand,
+		listCommand,
+		logCommand,
 	}
 
 	// 初始化日志配置，失败不会执行命令

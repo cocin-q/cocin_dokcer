@@ -33,6 +33,14 @@ var runCommand = cli.Command{
 			Name:  "cpuset",
 			Usage: "cpuset limit",
 		},
+		cli.BoolFlag{
+			Name:  "d",
+			Usage: "detach container",
+		},
+		cli.StringFlag{
+			Name:  "name",
+			Usage: "container name",
+		},
 	},
 	/* 这里是run命令执行的真正函数
 	1. 判断参数是否包含command
@@ -48,6 +56,10 @@ var runCommand = cli.Command{
 			cmdArray = append(cmdArray, arg)
 		}
 		tty := context.Bool("ti")
+		detach := context.Bool("d")
+		if tty && detach { // tty 相当于前台交互模式 detach是后台运行模式
+			return fmt.Errorf("ti and d paramter can not both provided")
+		}
 		// 把volume参数传给Run函数
 		volume := context.String("v")
 		resConf := &subsystems.ResourceConfig{
@@ -55,8 +67,9 @@ var runCommand = cli.Command{
 			CpuShare:    context.String("cpuset"),
 			CpuSet:      context.String("cpushare"),
 		}
-		//log.Infof("test: %v", resConf.MemoryLimit)
-		Run(tty, cmdArray, resConf, volume)
+		log.Infof("tty: %v", tty)
+		containerName := context.String("name")
+		Run(tty, cmdArray, resConf, volume, containerName)
 		return nil
 	},
 }
@@ -86,6 +99,30 @@ var commitCommand = cli.Command{
 		}
 		imageName := context.Args().Get(0)
 		commitContainer(imageName)
+		return nil
+	},
+}
+
+// ps命令
+var listCommand = cli.Command{
+	Name:  "ps",
+	Usage: "list all the containers",
+	Action: func(context *cli.Context) error {
+		ListContainers()
+		return nil
+	},
+}
+
+// log命令
+var logCommand = cli.Command{
+	Name:  "logs",
+	Usage: "print logs of a container",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Please input your container name")
+		}
+		containerName := context.Args().Get(0)
+		logContainer(containerName)
 		return nil
 	},
 }
