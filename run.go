@@ -17,7 +17,7 @@ import (
 const containerIDLength = 10
 
 // Run 运行命令
-func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, containerName string) {
+func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, containerName, imageName string) {
 	// 生成ID
 	id := randStringBytes(containerIDLength)
 	// 没指定名字，按照ID来
@@ -25,7 +25,7 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, co
 		containerName = id
 	}
 
-	parent, writePipe := container.NewParentProcess(tty, volume, containerName)
+	parent, writePipe := container.NewParentProcess(tty, volume, containerName, imageName)
 	if parent == nil {
 		log.Errorf("New parent process error")
 		return
@@ -34,7 +34,7 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, co
 		log.Error(err)
 	}
 	// 记录容器信息
-	containerName, err := recordContainerInfo(parent.Process.Pid, comArray, containerName, id)
+	containerName, err := recordContainerInfo(parent.Process.Pid, comArray, containerName, id, volume)
 	if err != nil {
 		log.Errorf("Record container info error %v", err)
 		return
@@ -51,16 +51,8 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, co
 	if tty {
 		parent.Wait()
 		deleteContainerInfo(containerName)
-
-		//mntURL := "/root/mnt/"
-		//rootURL := "/root/"
-		//container.DeleteWorkSpace(rootURL, mntURL, volume)
+		container.DeleteWorkSpace(volume, containerName)
 	}
-	//parent.Wait()
-	//
-	//mntURL := "/root/mnt/"
-	//rootURL := "/root/"
-	//container.DeleteWorkSpace(rootURL, mntURL, volume)
 
 	os.Exit(-1)
 }
@@ -85,7 +77,7 @@ func randStringBytes(n int) string {
 }
 
 // 记录容器的基本信息
-func recordContainerInfo(containerPID int, commandArray []string, containerName, id string) (string, error) {
+func recordContainerInfo(containerPID int, commandArray []string, containerName, id, volume string) (string, error) {
 	// 当前时间作为创建时间
 	createTime := time.Now().Format("2006-01-02 15:04:05")
 	command := strings.Join(commandArray, "")
@@ -97,6 +89,7 @@ func recordContainerInfo(containerPID int, commandArray []string, containerName,
 		Command:     command,
 		CreatedTime: createTime,
 		Status:      container.RUNNING,
+		Volume:      volume,
 	}
 
 	// json序列化

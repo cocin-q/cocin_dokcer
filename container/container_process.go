@@ -1,10 +1,10 @@
 package container
 
 import (
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 var (
@@ -14,6 +14,10 @@ var (
 	DefaultInfoLocation string = "/var/run/cocin_docker/%s/"
 	ConfigName          string = "config.json"
 	ContainerLogFile    string = "container.log"
+
+	RootUrl       string = "/root"
+	MntUrl        string = "/root/mnt/%s"
+	WriteLayerUrl string = "/root/writeLayer/%s"
 )
 
 type ContainerInfo struct {
@@ -23,6 +27,7 @@ type ContainerInfo struct {
 	Command     string `json:"command"`    //容器内init运行命令
 	CreatedTime string `json:"createTime"` //创建时间
 	Status      string `json:"status"`     //容器的状态
+	Volume      string `json:"volume"`
 }
 
 /*
@@ -32,12 +37,14 @@ type ContainerInfo struct {
 	CreateMountPoint 函数中，首先创建了mnt文件夹，作为挂载点，然后把writeLayer目录和busybox目录mount到mnt目录下
 
 	最后，在NewParentProcess 函数中将容器使用的宿主机目录改成/root/mnt
+
+	更新，为每个容器创建文件系统
 */
 
-func NewWorkSpace(rootURL, mntURL, volume string) {
-	CreateReadOnlyLayer(rootURL)
-	CreateWriteLayer(rootURL)
-	CreateMountPoint(rootURL, mntURL)
+func NewWorkSpace(volume, imageName, containerName string) {
+	CreateReadOnlyLayer(imageName)
+	CreateWriteLayer(containerName)
+	CreateMountPoint(containerName, imageName)
 	// 判断volume是否为空，如果是，就表示用户没有挂载卷，结束。否则解析
 	if volume != "" {
 		// 解析出volume的位置和需要挂载的地方 注意目前只能挂载一个
@@ -45,7 +52,7 @@ func NewWorkSpace(rootURL, mntURL, volume string) {
 		length := len(volumeURLs)
 		if length == 2 && volumeURLs[0] != "" && volumeURLs[1] != "" {
 			// 把volume挂载到相应的位置上
-			MountVolume(rootURL, mntURL, volumeURLs)
+			MountVolume(volumeURLs, containerName)
 			log.Info("%q", volumeURLs)
 		} else {
 			log.Infof("Volume parameter input is not correct.")
@@ -54,45 +61,53 @@ func NewWorkSpace(rootURL, mntURL, volume string) {
 }
 
 // CreateReadOnlyLayer 将busybox.tar解压到busybox目录下，作为容器的只读层
-func CreateReadOnlyLayer(rootURL string) {
-	busyboxURL := rootURL + "busybox/"
-	busyboxTarURL := rootURL + "busybox.tar"
-	exist, err := PathExists(busyboxURL)
+func CreateReadOnlyLayer(imageName string) error {
+	unTarFolderUrl := RootUrl + "/" + imageName + "/"
+	imageUrl := RootUrl + "/" + imageName + ".tar"
+	exist, err := PathExists(unTarFolderUrl)
 	if err != nil {
-		log.Infof("Fail to judge whether dir %s exists. %v", busyboxURL, err)
+		log.Infof("Fail to judge whether dir %s exists. %v", unTarFolderUrl, err)
+		return err
 	}
 	if exist == false {
-		if err := os.Mkdir(busyboxURL, 0777); err != nil {
-			log.Errorf("Mkdir dir %s error. %v", busyboxURL, err)
+		if err := os.Mkdir(unTarFolderUrl, 0622); err != nil {
+			log.Errorf("Mkdir dir %s error. %v", unTarFolderUrl, err)
+			return err
 		}
-		if _, err := exec.Command("tar", "-xvf", busyboxTarURL, "-C", busyboxURL).CombinedOutput(); err != nil {
-			log.Errorf("unTar dir %s error %v", busyboxTarURL, err)
+		if _, err := exec.Command("tar", "-xvf", imageUrl, "-C", unTarFolderUrl).CombinedOutput(); err != nil {
+			log.Errorf("unTar dir %s error %v", unTarFolderUrl, err)
+			return err
 		}
 	}
+	return nil
 }
 
 // CreateWriteLayer 创建名为writeLayer的文件夹作为容器唯一的可写层
-func CreateWriteLayer(rootURL string) {
-	writeURL := rootURL + "writeLayer/"
+func CreateWriteLayer(containerName string) {
+	writeURL := fmt.Sprintf(WriteLayerUrl, containerName)
 	if err := os.Mkdir(writeURL, 0777); err != nil {
 		log.Errorf("Mkdir dir %s error. %v", writeURL, err)
 	}
 }
 
 // CreateMountPoint 创建了mnt文件夹，作为挂载点，然后把writeLayer目录和busybox目录mount到mnt目录下
-func CreateMountPoint(rootURL string, mntURL string) {
+func CreateMountPoint(containerName, imageName string) error {
 	// 创建mnt文件夹作为挂载点
-	if err := os.Mkdir(mntURL, 0777); err != nil {
-		log.Errorf("Mkdir dir %s error. %v", mntURL, err)
+	mntUrl := fmt.Sprintf(MntUrl, containerName)
+	if err := os.MkdirAll(mntUrl, 0777); err != nil {
+		log.Errorf("Mkdir dir %s error. %v", mntUrl, err)
+		return err
 	}
 	// 把writeLayer目录和busybox目录mount到mnt目录下
-	dirs := "dirs=" + rootURL + "writeLayer:" + rootURL + "busybox"
-	cmd := exec.Command("mount", "-t", "aufs", "-o", dirs, "none", mntURL)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Errorf("%v", err)
+	tmpWriteLayer := fmt.Sprintf(WriteLayerUrl, containerName)
+	tmpImageLocation := RootUrl + "/" + imageName
+	dirs := "dirs=" + tmpWriteLayer + ":" + tmpImageLocation
+	_, err := exec.Command("mount", "-t", "aufs", "-o", dirs, "none", mntUrl).CombinedOutput()
+	if err != nil {
+		log.Errorf("Run command for createing mount point failed %v", err)
+		return err
 	}
+	return nil
 }
 
 // PathExists 判断文件路径是否存在
@@ -120,96 +135,37 @@ func PathExists(path string) (bool, error) {
 	   数据均不为空的时候。执行DeleteMountPointWithVolume函数来处理。
 	2. 其余情况下仍然使用前面的DeleteMountPoint函数。
 */
-func DeleteWorkSpace(rootURL, mntURL, volume string) {
+func DeleteWorkSpace(volume, containerName string) {
 	if volume != "" {
 		volumeURLs := volumeUrlExtract(volume)
 		if len(volumeURLs) == 2 && volumeURLs[0] != "" && volumeURLs[1] != "" {
-			DeleteMountPointWithVolume(rootURL, mntURL, volumeURLs)
+			DeleteMountPointWithVolume(volumeURLs, containerName)
 		} else {
-			DeleteMountPoint(rootURL, mntURL)
+			DeleteMountPoint(containerName)
 		}
 	} else {
-		DeleteMountPoint(rootURL, mntURL)
+		DeleteMountPoint(containerName)
 	}
-	DeleteWriteLayer(rootURL)
+	DeleteWriteLayer(containerName)
 }
 
-func DeleteMountPoint(rootURL, mntURL string) {
-	cmd := exec.Command("umount", "-A", mntURL)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Errorf("%v", err)
+func DeleteMountPoint(containerName string) error {
+	mntURL := fmt.Sprintf(MntUrl, containerName)
+	_, err := exec.Command("umount", "-A", mntURL).CombinedOutput()
+	if err != nil {
+		log.Errorf("Unmount %s error %v", mntURL, err)
+		return err
 	}
 	if err := os.RemoveAll(mntURL); err != nil {
-		log.Errorf("Remove dir %s error %v", mntURL, err)
+		log.Errorf("Remove mountpoint dir %s error %v", mntURL, err)
+		return err
 	}
+	return nil
 }
 
-func DeleteWriteLayer(rootURL string) {
-	writeURL := rootURL + "writeLayer/"
+func DeleteWriteLayer(containerName string) {
+	writeURL := fmt.Sprintf(WriteLayerUrl, containerName)
 	if err := os.RemoveAll(writeURL); err != nil {
-		log.Errorf("Remove dir %s error %v", writeURL, err)
-	}
-}
-
-// 解析volume字符串
-func volumeUrlExtract(volume string) []string {
-	var volumeURLs []string
-	volumeURLs = strings.Split(volume, ":")
-	return volumeURLs
-}
-
-/*
-	首先，读取宿主机文件目录URL，创建宿主机文件目录(/root/${parentUrl})
-	然后，读取容器挂载点URL，在容器文件系统里创建挂载点(/root/mnt/${containerUrl})
-	最后，把宿主机文件目录挂载到容器挂载点
-*/
-func MountVolume(rootURL, mntURL string, volumeURLs []string) {
-	// 创建宿主机文件目录 这里如果文件已经存在 不报错不退出 直接用
-	parentUrl := volumeURLs[0]
-	if err := os.Mkdir(parentUrl, 0777); err != nil {
-		log.Infof("Mkdir parent dir %s error. %v", parentUrl, err)
-	}
-	// 在容器文件系统里创建挂载点
-	containerUrl := volumeURLs[1]
-	containerVolumeURL := mntURL + containerUrl
-	if err := os.Mkdir(containerVolumeURL, 0777); err != nil {
-		log.Infof("Mkdir container dir %s error. %v", containerVolumeURL, err)
-	}
-	// 把宿主机文件目录挂载到容器挂载点
-	dirs := "dirs=" + parentUrl
-	cmd := exec.Command("mount", "-t", "aufs", "-o", dirs, "none", containerVolumeURL)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Errorf("Mount volume failed. %v", err)
-	}
-}
-
-/*
-	DeleteMountPointWithVolume 函数处理如下
-	1. 首先，卸载volume挂载点的文件系统(/root/mnt/{containerUrl})，保证整个容器的挂载点没有被使用
-	2. 然后，再卸载整个容器文件系统的挂载点(/root/mnt)
-	3. 最后，删除容器文件系统挂载点
-*/
-func DeleteMountPointWithVolume(rootURL, mntURL string, volumeURLs []string) {
-	containerUrl := mntURL + volumeURLs[1]
-	cmd := exec.Command("umount", containerUrl)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Errorf("Umount volume failed. %v", err)
-	}
-	// 卸载整个容器挂载点
-	cmd = exec.Command("umount", "-A", mntURL)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		log.Errorf("Umount volume failed. %v", err)
-	}
-	// 删除容器文件系统挂载点
-	if err := os.RemoveAll(mntURL); err != nil {
-		log.Infof("Remove mountpoint dir %s error %v", mntURL, err)
+		log.Errorf("Remove writeLayer dir %s error %v", writeURL, err)
 	}
 }

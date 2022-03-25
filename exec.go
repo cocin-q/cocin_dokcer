@@ -2,6 +2,7 @@ package main
 
 import (
 	"cocin_dokcer/container"
+	_ "cocin_dokcer/nsenter"
 	"encoding/json"
 	"fmt"
 	log "github.com/sirupsen/logrus"

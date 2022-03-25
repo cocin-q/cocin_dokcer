@@ -14,7 +14,7 @@ import (
 /*
  这里是父进程，就是当前进程执行的内容
 */ // NewParentProcess
-func NewParentProcess(tty bool, volume, containerName string) (*exec.Cmd, *os.File) {
+func NewParentProcess(tty bool, volume, containerName, imageName string) (*exec.Cmd, *os.File) {
 	readPipe, writePipe, err := NewPipe()
 	if err != nil {
 		log.Errorf("New pipe error %v", err)
@@ -46,10 +46,8 @@ func NewParentProcess(tty bool, volume, containerName string) (*exec.Cmd, *os.Fi
 		// 重定向
 		cmd.Stdout = stdLogFile
 	}
-	mntURL := "/root/mnt/"
-	rootURL := "/root/"
-	NewWorkSpace(rootURL, mntURL, volume)
-	cmd.Dir = mntURL
+	NewWorkSpace(volume, imageName, containerName)
+	cmd.Dir = fmt.Sprintf(MntUrl, containerName)
 	// 在这传入管道文件读取端的句柄，传给子进程
 	// cmd.ExtraFiles 外带这个文件句柄去创建子进程
 	cmd.ExtraFiles = []*os.File{readPipe}

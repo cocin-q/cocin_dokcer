@@ -70,7 +70,10 @@ var runCommand = cli.Command{
 		}
 		log.Infof("tty: %v", tty)
 		containerName := context.String("name")
-		Run(tty, cmdArray, resConf, volume, containerName)
+		// imageName作为第一个参数输入
+		imageName := cmdArray[0]
+		cmdArray = cmdArray[1:]
+		Run(tty, cmdArray, resConf, volume, containerName, imageName)
 		return nil
 	},
 }
@@ -95,11 +98,12 @@ var commitCommand = cli.Command{
 	Name:  "commit",
 	Usage: "commit a container into image",
 	Action: func(context *cli.Context) error {
-		if len(context.Args()) < 1 {
+		if len(context.Args()) < 2 {
 			return fmt.Errorf("Missing image name")
 		}
-		imageName := context.Args().Get(0)
-		commitContainer(imageName)
+		containerName := context.Args().Get(0)
+		imageName := context.Args().Get(1)
+		commitContainer(containerName, imageName)
 		return nil
 	},
 }
@@ -133,6 +137,7 @@ var execCommand = cli.Command{
 	Name:  "exec",
 	Usage: "exec a command into container",
 	Action: func(context *cli.Context) error {
+		// 当执行这个命令的时候，设置完环境变量，会重新打开一个子进程执行exec命令，这时候父进程可退出
 		if os.Getenv(ENV_EXEC_PID) != "" {
 			log.Infof("pid callback pid %s", os.Getpid())
 			return nil
@@ -149,6 +154,34 @@ var execCommand = cli.Command{
 		}
 		// 执行命令
 		ExecContainer(containerName, commandArray)
+		return nil
+	},
+}
+
+// stop命令
+var stopCommand = cli.Command{
+	Name:  "stop",
+	Usage: "stop a container",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing container name")
+		}
+		containerName := context.Args().Get(0)
+		stopContainer(containerName)
+		return nil
+	},
+}
+
+// rm命令
+var removeCommand = cli.Command{
+	Name:  "rm",
+	Usage: "remove unused containers",
+	Action: func(context *cli.Context) error {
+		if len(context.Args()) < 1 {
+			return fmt.Errorf("Missing container name")
+		}
+		containerName := context.Args().Get(0)
+		removeContainer(containerName)
 		return nil
 	},
 }

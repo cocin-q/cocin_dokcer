@@ -21,6 +21,8 @@ func main() {
 		listCommand,
 		logCommand,
 		execCommand,
+		stopCommand,
+		removeCommand,
 	}
 
 	// 初始化日志配置，失败不会执行命令
