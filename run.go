@@ -17,7 +17,7 @@ import (
 const containerIDLength = 10
 
 // Run 运行命令
-func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, containerName, imageName string) {
+func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, containerName, imageName string, envSlice []string) {
 	// 生成ID
 	id := randStringBytes(containerIDLength)
 	// 没指定名字，按照ID来
@@ -25,7 +25,7 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, co
 		containerName = id
 	}
 
-	parent, writePipe := container.NewParentProcess(tty, volume, containerName, imageName)
+	parent, writePipe := container.NewParentProcess(tty, volume, containerName, imageName, envSlice)
 	if parent == nil {
 		log.Errorf("New parent process error")
 		return

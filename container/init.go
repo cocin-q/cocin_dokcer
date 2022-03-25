@@ -14,7 +14,7 @@ import (
 /*
  这里是父进程，就是当前进程执行的内容
 */ // NewParentProcess
-func NewParentProcess(tty bool, volume, containerName, imageName string) (*exec.Cmd, *os.File) {
+func NewParentProcess(tty bool, volume, containerName, imageName string, envSlice []string) (*exec.Cmd, *os.File) {
 	readPipe, writePipe, err := NewPipe()
 	if err != nil {
 		log.Errorf("New pipe error %v", err)
@@ -26,6 +26,8 @@ func NewParentProcess(tty bool, volume, containerName, imageName string) (*exec.
 		Cloneflags: syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS |
 			syscall.CLONE_NEWNET | syscall.CLONE_NEWIPC,
 	}
+	// 设置环境变量
+	cmd.Env = append(os.Environ(), envSlice...)
 	if tty {
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout

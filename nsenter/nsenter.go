@@ -48,7 +48,8 @@ __attribute__((constructor)) void enter_namespace(void) {
 		}
 		close(fd);
 	}
-	// 在进入的Namespace中执行指定的命令
+	// 在进入的Namespace中执行指定的命令 注意，这里system新创建的进程，是继承自宿主机的
+	// 这里只是进入了PID所代表的那个命名空间，没说是进入那个进程，这个要注意区分。
 	int res = system(mydocker_cmd);
 	// 退出
 	exit(0);
