@@ -20,6 +20,7 @@ func main() {
 		commitCommand,
 		listCommand,
 		logCommand,
+		execCommand,
 	}
 
 	// 初始化日志配置，失败不会执行命令
