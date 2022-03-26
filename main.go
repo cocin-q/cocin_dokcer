@@ -23,6 +23,7 @@ func main() {
 		execCommand,
 		stopCommand,
 		removeCommand,
+		networkCommand,
 	}
 
 	// 初始化日志配置，失败不会执行命令

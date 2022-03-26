@@ -4,6 +4,7 @@ import (
 	"cocin_dokcer/Cgroups"
 	"cocin_dokcer/Cgroups/subsystems"
 	"cocin_dokcer/container"
+	"cocin_dokcer/network"
 	"encoding/json"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -17,7 +18,7 @@ import (
 const containerIDLength = 10
 
 // Run 运行命令
-func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, containerName, imageName string, envSlice []string) {
+func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, containerName, imageName string, envSlice []string, nw string, portmapping []string) {
 	// 生成ID
 	id := randStringBytes(containerIDLength)
 	// 没指定名字，按照ID来
@@ -46,6 +47,22 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, co
 	// 设置资源限制
 	cgroupManager.Set(res)
 	cgroupManager.Apply(parent.Process.Pid)
+
+	if nw != "" {
+		// config container network
+		network.Init()
+		containerInfo := &container.ContainerInfo{
+			Id:          id,
+			Pid:         strconv.Itoa(parent.Process.Pid),
+			Name:        containerName,
+			PortMapping: portmapping,
+		}
+		if err := network.Connect(nw, containerInfo); err != nil {
+			log.Errorf("Error Connect Network %v", err)
+			return
+		}
+	}
+
 	// 设置完限制后 初始化容器
 	sendInitCommand(comArray, writePipe)
 	if tty {
@@ -54,7 +71,6 @@ func Run(tty bool, comArray []string, res *subsystems.ResourceConfig, volume, co
 		container.DeleteWorkSpace(volume, containerName)
 	}
 
-	os.Exit(-1)
 }
 
 // sendInitCommand 发送用户命令进行初始化
