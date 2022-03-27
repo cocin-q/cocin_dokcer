@@ -25,6 +25,9 @@ func ListContainers() {
 	var containers []*container.ContainerInfo
 	// 遍历文件夹下面的所有文件
 	for _, file := range files {
+		if file.Name() == "network" {
+			continue
+		}
 		// 根据容器配置文件获得对应信息，然后转换成容器信息的对象
 		tmpContainer, err := getContainerInfo(file)
 		if err != nil {

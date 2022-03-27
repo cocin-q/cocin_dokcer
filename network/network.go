@@ -236,6 +236,8 @@ func configPortMapping(ep *Endpoint, cinfo *container.ContainerInfo) error {
 		if len(portMapping) != 2 {
 			logrus.Errorf("port mapping format error, %v", pm)
 			continue
+		} else {
+			logrus.Infof("映射%s --> %s", portMapping[0], portMapping[1])
 		}
 		// 把宿主机的端口请求转发到容器的地址和端口上
 		iptablesCmd := fmt.Sprintf("-t nat -A PREROUTING -p tcp -m tcp --dport %s -j DNAT --to-destination %s:%s",
@@ -247,6 +249,7 @@ func configPortMapping(ep *Endpoint, cinfo *container.ContainerInfo) error {
 			logrus.Errorf("iptables Output, %v", output)
 			continue
 		}
+		logrus.Infof("输出：%s", cmd.String())
 	}
 	return nil
 }
